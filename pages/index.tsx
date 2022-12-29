@@ -1,11 +1,12 @@
-import { FC, FormEventHandler, useEffect } from 'react';
+import { FC, FormEventHandler, useEffect, useState } from 'react';
 import { GetStaticProps } from 'next';
 import styled from 'styled-components';
 import Head from 'next/head';
+import SubmitOrConnect from 'components/submitOrConnect';
 import {
   useContractSWR,
   useSTETHContractRPC,
-  useLidoSWR,
+  useSTETHContractWeb3,
 } from '@lido-sdk/react';
 import {
   Block,
@@ -14,16 +15,16 @@ import {
   DataTableRow,
   Input,
   Steth,
-  Button,
+  // Button,
 } from '@lidofinance/lido-ui';
 import { trackEvent, MatomoEventType } from '@lidofinance/analytics-matomo';
-
 import Wallet from 'components/wallet';
 import Section from 'components/section';
 import Layout from 'components/layout';
 import Faq from 'components/faq';
-import { standardFetcher } from 'utils';
+import { etherToString, stringToEther } from 'utils';
 import { FAQItem, getFaqList } from 'utils/faqList';
+import BigNumber from 'bignumber.js';
 
 interface HomeProps {
   faqList: FAQItem[];
@@ -44,26 +45,81 @@ const Home: FC<HomeProps> = ({ faqList }) => {
     trackEvent(...matomoSomeEvent);
   }, []);
 
+  const [enteredAmount, setEnteredAmount] = useState('');
+  const [canStake, setCanStake] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const contractWeb3 = useSTETHContractWeb3();
+
   const handleSubmit: FormEventHandler<HTMLFormElement> | undefined = (
     event,
   ) => {
     event.preventDefault();
-    alert('Submitted');
+
+    if (enteredAmount && enteredAmount !== '0') {
+      setIsSubmitting(true);
+
+      contractWeb3
+        ?.submit('0x0000000000000000000000000000000000000000', {
+          value: stringToEther(enteredAmount),
+        })
+        .then((tx) => {
+          console.log('tx:', tx);
+          tx.wait()
+            .then((contractReceipt) => {
+              setIsSubmitting(false);
+              setEnteredAmount('');
+              setCanStake(false);
+              console.log('contractReceipt:', contractReceipt);
+              alert('tx success');
+            })
+            .catch((reason) => {
+              console.log('tx fail:', reason);
+              alert('tx fail');
+            });
+        })
+        .catch((reason) => {
+          setIsSubmitting(false);
+          setCanStake(true);
+          console.log('ex:', reason);
+          alert('tx 已取消');
+        });
+
+      alert('Submitted');
+    }
   };
 
-  const contractRpc = useSTETHContractRPC();
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const amount = e.target.value;
+    if (isNaN(+amount) || /^00/.test(amount) || +amount < 0) {
+      return;
+    }
+    if (+amount === 0) {
+      setCanStake(false);
+    } else {
+      setCanStake(true);
+    }
+    setEnteredAmount(amount);
+  };
+
+  const stETHContractRpc = useSTETHContractRPC();
   const tokenName = useContractSWR({
-    contract: contractRpc,
+    contract: stETHContractRpc,
     method: 'name',
   });
+  const beaconStat = useContractSWR({
+    contract: stETHContractRpc,
+    method: 'getBeaconStat',
+  });
 
-  const { data } = useLidoSWR<number>('/api/oneinch-rate', standardFetcher);
-  const oneInchRate = data ? (100 - (1 / data) * 100).toFixed(2) : 1;
+  const totalPooledEther = useContractSWR({
+    contract: stETHContractRpc,
+    method: 'getTotalPooledEther',
+  });
 
   return (
     <Layout
-      title="Lido Frontend Template"
-      subtitle="Develop Lido Apps without hassle"
+      title="Stake Ether"
+      subtitle="Stake ETH and receive stETH while staking."
     >
       <Head>
         <title>Lido | Frontend Template</title>
@@ -74,24 +130,76 @@ const Home: FC<HomeProps> = ({ faqList }) => {
           <InputWrapper>
             <Input
               fullwidth
+              value={enteredAmount}
               placeholder="0"
               leftDecorator={<Steth />}
               label="Token amount"
+              onChange={handleChange}
             />
           </InputWrapper>
-          <Button fullwidth type="submit">
-            Submit
-          </Button>
+          <SubmitOrConnect
+            isSubmitting={isSubmitting}
+            disabledSubmit={!canStake}
+            submitLabel="Stake now"
+            fullwidth={false}
+            submit={handleSubmit}
+          />
+          {/*<Button fullwidth type="submit">*/}
+          {/*  Submit*/}
+          {/*</Button>*/}
         </form>
+        <DataTable>
+          <DataTableRow
+            title="You will receive"
+            loading={tokenName.initialLoading}
+          >
+            {enteredAmount ? enteredAmount : 0} stETH
+          </DataTableRow>
+          <DataTableRow
+            title="Exchange rate"
+            loading={tokenName.initialLoading}
+          >
+            {}
+          </DataTableRow>
+          <DataTableRow
+            title="Transaction cost"
+            loading={tokenName.initialLoading}
+          >
+            {}
+          </DataTableRow>
+          <DataTableRow title="Reward fee" loading={tokenName.initialLoading}>
+            {}
+          </DataTableRow>
+        </DataTable>
       </Block>
-      <Section title="Data table" headerDecorator={<Link href="#">Link</Link>}>
+      <Section
+        title="Lido statistics"
+        headerDecorator={<Link href="#">Link</Link>}
+      >
         <Block>
           <DataTable>
-            <DataTableRow title="Token name" loading={tokenName.initialLoading}>
-              {tokenName.data}
+            <DataTableRow
+              title="Annual percentage rate"
+              loading={tokenName.initialLoading}
+            >
+              {}
             </DataTableRow>
-            <DataTableRow title="1inch rate" loading={tokenName.initialLoading}>
-              {oneInchRate}
+            <DataTableRow
+              title="Total staked with Lido"
+              loading={tokenName.initialLoading}
+            >
+              {etherToString(totalPooledEther.data)} ETH
+            </DataTableRow>
+            <DataTableRow title="Stakers" loading={tokenName.initialLoading}>
+              {(
+                beaconStat.data?.depositedValidators as unknown as BigNumber
+              )?.toString(10)}
+            </DataTableRow>
+            <DataTableRow
+              title="stETH market cap"
+              loading={tokenName.initialLoading}
+            >
+              {}
             </DataTableRow>
           </DataTable>
         </Block>

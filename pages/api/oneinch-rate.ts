@@ -14,8 +14,8 @@ const oneInchRate: API = async (req, res) => {
   const amount = 10 ** 18;
   const api = `https://api.1inch.exchange/v3.0/1/quote`;
   const query = new URLSearchParams({
-    fromTokenAddress: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
-    toTokenAddress: getTokenAddress(CHAINS.Mainnet, TOKENS.STETH),
+    fromTokenAddress: getTokenAddress(CHAINS.Goerli, TOKENS.STETH),
+    toTokenAddress: getTokenAddress(CHAINS.Goerli, TOKENS.WSTETH),
     amount: amount.toString(),
   });
   const url = `${api}?${query.toString()}`;
