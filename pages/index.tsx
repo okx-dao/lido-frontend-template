@@ -1,11 +1,13 @@
-import { FC, FormEventHandler, useEffect } from 'react';
+import { FC, FormEventHandler, useEffect, useState } from 'react';
 import { GetStaticProps } from 'next';
 import styled from 'styled-components';
 import Head from 'next/head';
+import SubmitOrConnect from 'components/submitOrConnect';
 import {
   useContractSWR,
+  useSDK,
   useSTETHContractRPC,
-  useLidoSWR,
+  useSTETHContractWeb3,
 } from '@lido-sdk/react';
 import {
   Block,
@@ -13,17 +15,24 @@ import {
   DataTable,
   DataTableRow,
   Input,
+  Modal,
   Steth,
-  Button,
+  Error,
+  Loader,
+  Success,
+  Text,
 } from '@lidofinance/lido-ui';
 import { trackEvent, MatomoEventType } from '@lidofinance/analytics-matomo';
-
 import Wallet from 'components/wallet';
 import Section from 'components/section';
 import Layout from 'components/layout';
 import Faq from 'components/faq';
-import { standardFetcher } from 'utils';
+import { etherToString, stringToEther } from 'utils';
 import { FAQItem, getFaqList } from 'utils/faqList';
+import BigNumber from 'bignumber.js';
+
+import { useLidoOracleContractRPC } from '../hooks';
+import { SCANNERS } from '../config/scanners';
 
 interface HomeProps {
   faqList: FAQItem[];
@@ -44,26 +53,154 @@ const Home: FC<HomeProps> = ({ faqList }) => {
     trackEvent(...matomoSomeEvent);
   }, []);
 
+  const { chainId } = useSDK();
+  const [enteredAmount, setEnteredAmount] = useState('');
+  const [canStake, setCanStake] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [openModal, setOpenModal] = useState(false);
+  const [modalProps, setModalProps] = useState({
+    modalTitle: '',
+    modalSubTitle: '',
+    modalIcon: <></>,
+    modalElement: <></>,
+  });
+
+  const setErrorModal = () => {
+    setModalProps({
+      modalTitle: 'Transaction failed',
+      modalSubTitle: 'Something went wrong.',
+      modalIcon: <Error color="green" height={64} width={64} />,
+      modalElement: <Link href="#">Retry</Link>,
+    });
+  };
+  const contractWeb3 = useSTETHContractWeb3();
+
   const handleSubmit: FormEventHandler<HTMLFormElement> | undefined = (
     event,
   ) => {
     event.preventDefault();
-    alert('Submitted');
+    setOpenModal(true);
+
+    if (enteredAmount && enteredAmount !== '0') {
+      setIsSubmitting(true);
+      setModalProps({
+        modalTitle: `You are now staking ${enteredAmount} ETH`,
+        modalSubTitle: `staking ${enteredAmount} ETH. You will receive ${enteredAmount} stETH`,
+        modalIcon: <Loader size="large" />,
+        modalElement: (
+          <Text color="secondary" size="xxs">
+            Confirm this transaction in your wallet
+          </Text>
+        ),
+      });
+
+      contractWeb3
+        ?.submit('0x0000000000000000000000000000000000000000', {
+          value: stringToEther(enteredAmount),
+        })
+        .then((tx) => {
+          const link = SCANNERS[chainId] + 'tx/' + tx.hash;
+          console.log('tx:', tx);
+          setModalProps({
+            modalTitle: 'You are now approving ETH',
+            modalSubTitle: 'Approving ETH.',
+            modalIcon: <Loader size="large" />,
+            modalElement: (
+              <Text color="secondary" size="xxs">
+                Confirm this transaction in your wallet
+              </Text>
+            ),
+          });
+          tx.wait()
+            .then((contractReceipt) => {
+              setModalProps({
+                modalTitle: 'staking successful!',
+                modalSubTitle: `You receive ${enteredAmount} stETH`,
+                modalIcon: <Success color="green" height={64} width={64} />,
+                modalElement: <Link href={link}>View on Etherscan</Link>,
+              });
+              setIsSubmitting(false);
+              setEnteredAmount('');
+              setCanStake(false);
+              console.log('contractReceipt:', contractReceipt);
+            })
+            .catch((reason) => {
+              console.log('tx fail:', reason);
+              setErrorModal();
+            });
+        })
+        .catch((reason) => {
+          setErrorModal();
+          setIsSubmitting(false);
+          setCanStake(true);
+          console.log('ex:', reason);
+        });
+    }
   };
 
-  const contractRpc = useSTETHContractRPC();
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const amount = e.target.value;
+    if (isNaN(+amount) || /^00/.test(amount) || +amount < 0) {
+      return;
+    }
+    if (+amount === 0) {
+      setCanStake(false);
+    } else {
+      setCanStake(true);
+    }
+    setEnteredAmount(amount);
+  };
+
+  const stETHContractRpc = useSTETHContractRPC();
+  const lidoOracleContractRpc = useLidoOracleContractRPC();
   const tokenName = useContractSWR({
-    contract: contractRpc,
+    contract: stETHContractRpc,
     method: 'name',
   });
+  const beaconStat = useContractSWR({
+    contract: stETHContractRpc,
+    method: 'getBeaconStat',
+  });
 
-  const { data } = useLidoSWR<number>('/api/oneinch-rate', standardFetcher);
-  const oneInchRate = data ? (100 - (1 / data) * 100).toFixed(2) : 1;
+  const totalPooledEther = useContractSWR({
+    contract: stETHContractRpc,
+    method: 'getTotalPooledEther',
+  });
+
+  const fee = useContractSWR({
+    contract: stETHContractRpc,
+    method: 'getFee',
+  });
+
+  // protocolAPR = (postTotalPooledEther - preTotalPooledEther) * secondsInYear / (preTotalPooledEther * timeElapsed)
+  // lidoFeeAsFraction = lidoFee / basisPoint
+  // userAPR = protocolAPR * (1 - lidoFeeAsFraction)
+  const lastReport = useContractSWR({
+    contract: lidoOracleContractRpc,
+    method: 'getLastCompletedReportDelta',
+  });
+  const preTotalPooledEther = lastReport.data?.preTotalPooledEther;
+  const postTotalPooledEther = lastReport.data?.postTotalPooledEther;
+  const timeElapsed = lastReport.data?.timeElapsed;
+  const secondsInYear = '31536000';
+  const divBasis = timeElapsed?.mul(
+    preTotalPooledEther ? preTotalPooledEther : 1,
+  );
+  const protocolAPR = postTotalPooledEther
+    ?.sub(preTotalPooledEther ? preTotalPooledEther : 0)
+    .mul('1000000000000000000')
+    .mul(secondsInYear)
+    .div(divBasis ? divBasis : 1)
+    .mul('100');
+
+  const userAPR = protocolAPR
+    ?.mul(10000 - (fee.data ? fee.data : 0))
+    .div(10000);
 
   return (
     <Layout
-      title="Lido Frontend Template"
-      subtitle="Develop Lido Apps without hassle"
+      title="Stake Ether"
+      subtitle="Stake ETH and receive stETH while staking."
     >
       <Head>
         <title>Lido | Frontend Template</title>
@@ -74,24 +211,92 @@ const Home: FC<HomeProps> = ({ faqList }) => {
           <InputWrapper>
             <Input
               fullwidth
+              value={enteredAmount}
               placeholder="0"
               leftDecorator={<Steth />}
               label="Token amount"
+              onChange={handleChange}
             />
           </InputWrapper>
-          <Button fullwidth type="submit">
-            Submit
-          </Button>
+          <SubmitOrConnect
+            isSubmitting={isSubmitting}
+            disabledSubmit={!canStake}
+            submitLabel="Submit"
+            fullwidth={false}
+            submit={handleSubmit}
+          />
+          <Modal
+            onClose={() => {
+              setOpenModal(false);
+            }}
+            subtitle={modalProps.modalSubTitle}
+            themeOverride="light"
+            title={modalProps.modalTitle}
+            open={openModal}
+            titleIcon={modalProps.modalIcon}
+            center={true}
+          >
+            <br />
+            {modalProps.modalElement}
+          </Modal>
         </form>
+        <DataTable>
+          <DataTableRow
+            title="You will receive"
+            loading={tokenName.initialLoading}
+          >
+            {enteredAmount ? enteredAmount : 0} stETH
+          </DataTableRow>
+          <DataTableRow
+            title="Exchange rate"
+            loading={tokenName.initialLoading}
+          >
+            {'1 ETH = 1 stETH'}
+          </DataTableRow>
+          <DataTableRow
+            title="Transaction cost"
+            loading={tokenName.initialLoading}
+          >
+            {}
+          </DataTableRow>
+          <DataTableRow
+            help="Please note: this fee applies to staking rewards/earning only, and is NOT taken from your staked amount. It is a fee on earnings only."
+            title="Reward fee"
+            loading={tokenName.initialLoading}
+          >
+            {(fee.data ? fee.data : 0) / 100.0} %
+          </DataTableRow>
+        </DataTable>
       </Block>
-      <Section title="Data table" headerDecorator={<Link href="#">Link</Link>}>
+      <Section
+        title="Lido statistics"
+        headerDecorator={<Link href="#">Link</Link>}
+      >
         <Block>
           <DataTable>
-            <DataTableRow title="Token name" loading={tokenName.initialLoading}>
-              {tokenName.data}
+            <DataTableRow
+              help="Moving average of APR for 7 days period."
+              title="Annual percentage rate"
+              loading={tokenName.initialLoading}
+            >
+              {etherToString(userAPR)} %
             </DataTableRow>
-            <DataTableRow title="1inch rate" loading={tokenName.initialLoading}>
-              {oneInchRate}
+            <DataTableRow
+              title="Total staked with Lido"
+              loading={tokenName.initialLoading}
+            >
+              {etherToString(totalPooledEther.data)} ETH
+            </DataTableRow>
+            <DataTableRow title="Stakers" loading={tokenName.initialLoading}>
+              {(
+                beaconStat.data?.depositedValidators as unknown as BigNumber
+              )?.toString(10)}
+            </DataTableRow>
+            <DataTableRow
+              title="stETH market cap"
+              loading={tokenName.initialLoading}
+            >
+              {}
             </DataTableRow>
           </DataTable>
         </Block>

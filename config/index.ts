@@ -7,3 +7,6 @@ export * from './rpc';
 export * from './storage';
 export * from './example';
 export * from './metrics';
+export * from './addresses';
+export * from './scanners';
+export * from './constants';

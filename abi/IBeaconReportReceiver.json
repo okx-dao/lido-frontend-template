@@ -1,0 +1,33 @@
+{
+  "_format": "hh-sol-artifact-1",
+  "contractName": "IBeaconReportReceiver",
+  "sourceName": "contracts/0.4.24/interfaces/IBeaconReportReceiver.sol",
+  "abi": [
+    {
+      "constant": false,
+      "inputs": [
+        {
+          "name": "_postTotalPooledEther",
+          "type": "uint256"
+        },
+        {
+          "name": "_preTotalPooledEther",
+          "type": "uint256"
+        },
+        {
+          "name": "_timeElapsed",
+          "type": "uint256"
+        }
+      ],
+      "name": "processLidoOracleReport",
+      "outputs": [],
+      "payable": false,
+      "stateMutability": "nonpayable",
+      "type": "function"
+    }
+  ],
+  "bytecode": "0x",
+  "deployedBytecode": "0x",
+  "linkReferences": {},
+  "deployedLinkReferences": {}
+}
