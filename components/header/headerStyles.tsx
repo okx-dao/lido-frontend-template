@@ -12,6 +12,7 @@ export const HeaderLogoStyle = styled.div`
   overflow: hidden;
   flex-shrink: 0;
   margin-right: ${({ theme }) => theme.spaceMap.xxl}px;
+  display: flex;
 
   .header-link {
     margin-left: 60px;
