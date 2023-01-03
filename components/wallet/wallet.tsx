@@ -42,7 +42,7 @@ const Wallet: WalletComponent = (props) => {
       <WalletCardRow>
         <WalletCardBalance
           small
-          title="Token balance"
+          title="stETH balance"
           loading={steth.initialLoading}
           value={
             <>
@@ -53,7 +53,7 @@ const Wallet: WalletComponent = (props) => {
         />
         <WalletCardBalance
           small
-          title="Token balance"
+          title="wstETH balance"
           loading={wsteth.initialLoading}
           value={
             <>

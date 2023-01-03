@@ -7,3 +7,7 @@ export * from './rpc';
 export * from './storage';
 export * from './example';
 export * from './metrics';
+export * from './lidoAddr';
+export * from './scanners';
+export * from './wstETHAddr';
+export * from './constants';
