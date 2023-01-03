@@ -5,6 +5,9 @@ import Head from 'next/head';
 import SubmitOrConnect from 'components/submitOrConnect';
 import {
   useContractSWR,
+  useEthereumBalance,
+  useEthereumSWR,
+  useFeeAnalytics,
   useSDK,
   useSTETHContractRPC,
   useSTETHContractWeb3,
@@ -16,23 +19,23 @@ import {
   DataTableRow,
   Input,
   Modal,
-  Steth,
   Error,
   Loader,
   Success,
   Text,
+  Eth,
 } from '@lidofinance/lido-ui';
 import { trackEvent, MatomoEventType } from '@lidofinance/analytics-matomo';
 import Wallet from 'components/wallet';
 import Section from 'components/section';
 import Layout from 'components/layout';
 import Faq from 'components/faq';
-import { etherToString, stringToEther } from 'utils';
+import { etherToString, formatBalance, stringToEther } from 'utils';
 import { FAQItem, getFaqList } from 'utils/faqList';
 import BigNumber from 'bignumber.js';
-
 import { useLidoOracleContractRPC } from '../hooks';
 import { SCANNERS } from '../config/scanners';
+import MaxButton from '../components/maxButton/maxButton';
 
 interface HomeProps {
   faqList: FAQItem[];
@@ -53,7 +56,7 @@ const Home: FC<HomeProps> = ({ faqList }) => {
     trackEvent(...matomoSomeEvent);
   }, []);
 
-  const { chainId } = useSDK();
+  const { account, chainId } = useSDK();
   const [enteredAmount, setEnteredAmount] = useState('');
   const [canStake, setCanStake] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -65,6 +68,8 @@ const Home: FC<HomeProps> = ({ faqList }) => {
     modalElement: <></>,
   });
 
+  const eth = useEthereumBalance();
+
   const setErrorModal = () => {
     setModalProps({
       modalTitle: 'Transaction failed',
@@ -73,7 +78,7 @@ const Home: FC<HomeProps> = ({ faqList }) => {
       modalElement: <Link href="#">Retry</Link>,
     });
   };
-  const contractWeb3 = useSTETHContractWeb3();
+  const stEthContractWeb3 = useSTETHContractWeb3();
 
   const handleSubmit: FormEventHandler<HTMLFormElement> | undefined = (
     event,
@@ -94,7 +99,7 @@ const Home: FC<HomeProps> = ({ faqList }) => {
         ),
       });
 
-      contractWeb3
+      stEthContractWeb3
         ?.submit('0x0000000000000000000000000000000000000000', {
           value: stringToEther(enteredAmount),
         })
@@ -172,9 +177,6 @@ const Home: FC<HomeProps> = ({ faqList }) => {
     method: 'getFee',
   });
 
-  // protocolAPR = (postTotalPooledEther - preTotalPooledEther) * secondsInYear / (preTotalPooledEther * timeElapsed)
-  // lidoFeeAsFraction = lidoFee / basisPoint
-  // userAPR = protocolAPR * (1 - lidoFeeAsFraction)
   const lastReport = useContractSWR({
     contract: lidoOracleContractRpc,
     method: 'getLastCompletedReportDelta',
@@ -197,6 +199,33 @@ const Home: FC<HomeProps> = ({ faqList }) => {
     ?.mul(10000 - (fee.data ? fee.data : 0))
     .div(10000);
 
+  const gasPirce = useEthereumSWR({
+    method: 'getGasPrice',
+  });
+
+  console.log('gasPirce', gasPirce);
+
+  const feeAnalytics = useFeeAnalytics();
+  console.log('feeAnalytics', feeAnalytics);
+
+  const gasLimit = '94629';
+  const gasFee = feeAnalytics.baseFee
+    .mul('1000000000')
+    .add(gasPirce.data ? gasPirce.data : 0)
+    .mul(gasLimit);
+
+  const setMaxInputValue = () => {
+    if (account) {
+      const amount = eth.data?.sub(gasFee ? gasFee : 0);
+      if (amount?.gt(0)) {
+        setEnteredAmount(formatBalance(amount));
+        setCanStake(true);
+      } else {
+        alert('手续费不足');
+      }
+    }
+  };
+
   return (
     <Layout
       title="Stake Ether"
@@ -213,15 +242,16 @@ const Home: FC<HomeProps> = ({ faqList }) => {
               fullwidth
               value={enteredAmount}
               placeholder="0"
-              leftDecorator={<Steth />}
+              leftDecorator={<Eth />}
               label="Token amount"
+              rightDecorator={<MaxButton onClick={setMaxInputValue} />}
               onChange={handleChange}
             />
           </InputWrapper>
           <SubmitOrConnect
             isSubmitting={isSubmitting}
             disabledSubmit={!canStake}
-            submitLabel="Submit"
+            submitLabel="Stake now"
             fullwidth={false}
             submit={handleSubmit}
           />
@@ -262,6 +292,7 @@ const Home: FC<HomeProps> = ({ faqList }) => {
           <DataTableRow
             help="Please note: this fee applies to staking rewards/earning only, and is NOT taken from your staked amount. It is a fee on earnings only."
             title="Reward fee"
+            highlight
             loading={tokenName.initialLoading}
           >
             {(fee.data ? fee.data : 0) / 100.0} %
@@ -277,6 +308,7 @@ const Home: FC<HomeProps> = ({ faqList }) => {
             <DataTableRow
               help="Moving average of APR for 7 days period."
               title="Annual percentage rate"
+              highlight
               loading={tokenName.initialLoading}
             >
               {etherToString(userAPR)} %
