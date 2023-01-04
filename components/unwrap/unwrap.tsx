@@ -13,9 +13,11 @@ import {
   Wsteth,
 } from '@lidofinance/lido-ui';
 import {
+  // useContractEstimateGasSWR,
   useContractSWR,
   useSDK,
   useSTETHBalance,
+  useTxPrice,
   useWSTETHBalance,
 } from '@lido-sdk/react';
 import { useWstETHContractRpc, useWstETHContractWeb3 } from 'hooks';
@@ -38,13 +40,14 @@ const Unwrap: FC = () => {
   const [reward, setReward] = useState('0');
   const [isSwapping, setIsSwapping] = useState(false);
   const [canSwap, setCanSwap] = useState(false);
-  const gasFee = '0';
   const [inputError, setInputError] = useState('');
   const steth = useSTETHBalance();
   const wsteth = useWSTETHBalance();
   const wstETHContractWeb3 = useWstETHContractWeb3();
   const wstETHContractRpc = useWstETHContractRpc();
   const [openModal, setOpenModal] = useState(false);
+  const defaultUnwrapGas = '107624';
+
   const [modalProps, setModalProps] = useState({
     modalTitle: '',
     modalSubTitle: '',
@@ -70,6 +73,15 @@ const Unwrap: FC = () => {
     method: 'getStETHByWstETH',
     params: [stringToBalance(enteredAmount)],
   });
+
+  // const unwrapEstimatedGas = useContractEstimateGasSWR({
+  //   contract: wstETHContractWeb3? wstETHContractWeb3: undefined,
+  //   method: 'unwrap',
+  //   params: [
+  //     '100000000000000000',
+  //   ],
+  //   shouldFetch: true,
+  // });
 
   useEffect(() => {
     if (+enteredAmount > 0) {
@@ -132,6 +144,7 @@ const Unwrap: FC = () => {
       setInputError('');
       setCanSwap(true);
     }
+    // console.log("unwrapEstimatedGas: ", unwrapEstimatedGas.data?.toString());
   }, [enteredAmount]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -248,7 +261,7 @@ const Unwrap: FC = () => {
       </Modal>
       <DataTable>
         <DataTableRow title="Gas fee">
-          ${Number(gasFee).toFixed(2)}
+          ${Number(useTxPrice(defaultUnwrapGas).data).toFixed(2)}
         </DataTableRow>
         <DataTableRow title="Exchange rate">
           1 {wstSymbol} = {formatBalance(stETHPerToken.data, 4)} {stSymbol}

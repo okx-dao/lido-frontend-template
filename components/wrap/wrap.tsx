@@ -15,6 +15,9 @@ import {
   useSDK,
   useSTETHBalance,
   useWSTETHBalance,
+  // useFeeAnalytics,
+  // useContractEstimateGasSWR,
+  useTxPrice,
 } from '@lido-sdk/react';
 import {
   useStETHContractRpc,
@@ -31,7 +34,7 @@ import {
   decimals,
   stSymbol,
   wstSymbol,
-  getWstETHAddress,
+  getLidoWstethAddress,
   SCANNERS,
 } from 'config';
 import { parseUnits } from '@ethersproject/units';
@@ -49,24 +52,25 @@ const Wrap: FC = () => {
   const [isSwapping, setIsSwapping] = useState(false);
   const [canSwap, setCanSwap] = useState(false);
   const [canUnlock, setCanUnlock] = useState(false);
-  const gasFee = '0';
-  const unlockFee = '0';
   const [openModal, setOpenModal] = useState(false);
   const wstETHContractWeb3 = useWstETHContractWeb3();
   const wstETHContractRpc = useWstETHContractRpc();
   const stETHContractWeb3 = useStETHContractWeb3();
   const stETHContractRpc = useStETHContractRpc();
   const [currentTokenSymbol, setCurrentTokenSymbol] = useState(stSymbol);
-
+  // const feeAnalytics = useFeeAnalytics();
   const [modalProps, setModalProps] = useState({
     modalTitle: '',
     modalSubTitle: '',
     modalIcon: <></>,
     modalElement: <></>,
   });
-
   const [currentToken, setCurrentToken] = useState('steth'); //steth/eth
   const [unlockIcon, setUnlockIcon] = useState('');
+  const defaultWrapGas = '113888';
+  // const [wrapGas, setWrapGas] = useState(defaultWrapGas);
+  const defaultUnlockGas = String((47829 + 77513) / 2); // 47829, 77513
+  // const [unlockGas, setUnlockGas] = useState(defaultUnlockGas);
 
   useEffect(() => {
     if (steth.data) {
@@ -167,11 +171,70 @@ const Wrap: FC = () => {
   const allowance = useContractSWR({
     contract: stETHContractRpc,
     method: 'allowance',
-    params: [account, getWstETHAddress(chainId)],
+    params: [account, getLidoWstethAddress(chainId)],
   });
+
+  // const wrapEstimatedGas = useContractEstimateGasSWR({
+  //   contract: wstETHContractWeb3? wstETHContractWeb3: undefined,
+  //   method: 'wrap',
+  //   params: [
+  //     '100000000000000000',
+  //   ],
+  //   shouldFetch: true,
+  // });
+
+  // useEffect(() => {
+  //   if(wrapEstimatedGas.data && wrapEstimatedGas.data.gt("21264")){
+  //     setWrapGas(wrapEstimatedGas.data.toString())
+  //   }
+  //   else{
+  //     setWrapGas(defaultWrapGas);
+  //   }
+  // }, [wrapEstimatedGas.data])
+
+  // const unlockEstimatedGas = useContractEstimateGasSWR({
+  //   contract: stETHContractWeb3? stETHContractWeb3: undefined,
+  //   method: 'approve',
+  //   params: [
+  //     getLidoWstethAddress(chainId),
+  //     '100000000000000000',
+  //   ],
+  //   shouldFetch: true,
+  // });
+
+  // useEffect(() => {
+  //   if(unlockEstimatedGas.data && unlockEstimatedGas.data.gt("21392")){
+  //     setUnlockGas(unlockEstimatedGas.data.toString())
+  //   }
+  //   else{
+  //     setUnlockGas(defaultUnlockGas);
+  //   }
+  // }, [unlockEstimatedGas.data])
+
+  // const history = useFeeHistory({ blocks: 1024 });
+
+  // const calculateSubmitGas = () => {
+  // stETHContractWeb3?.estimateGas
+  // .approve(
+  //   getLidoWstethAddress(chainId),
+  //   '100000000000000000',
+  //   // {value: '100000000000000000',}
+  // )
+  // .then((gas) => {
+  //   console.log('gas', gas.toString());
+  // })
+  // .catch((e) => {
+  //   console.log('estimateGas exception', e);
+  // });
+  // }
 
   useEffect(() => {
     checkAllowance(enteredAmount);
+    // console.log("gasPirce: ", gasPirce.data?.toString());
+    // console.log("wrap gas:", wrapEstimatedGas.data?.toString());
+    // calculateSubmitGas();
+    // console.log("history: ", history);
+    // console.log("unlock gas", unlockEstimatedGas.data?.toString());
   }, [allowance.data, enteredAmount]);
 
   const submitLable = () => {
@@ -185,6 +248,10 @@ const Wrap: FC = () => {
   const wrap = (amount: BigNumber) => {
     return wstETHContractWeb3?.wrap(amount);
   };
+
+  // const gasPirce = useEthereumSWR({
+  //   method: 'getGasPrice',
+  // });
 
   const setErrorModal = () => {
     setModalProps({
@@ -200,7 +267,7 @@ const Wrap: FC = () => {
       return providerWeb3?.send('eth_sendTransaction', [
         {
           from: account,
-          to: getWstETHAddress(chainId),
+          to: getLidoWstethAddress(chainId),
           value: amount.toHexString(),
         },
       ]);
@@ -220,7 +287,7 @@ const Wrap: FC = () => {
       ),
     });
     setIsUnlocking(true);
-    approve(getWstETHAddress(chainId), utils.parseUnits(amount, decimals))
+    approve(getLidoWstethAddress(chainId), utils.parseUnits(amount, decimals))
       ?.then((tx) => {
         const link = SCANNERS[chainId] + 'tx/' + tx.hash;
         setModalProps({
@@ -399,9 +466,11 @@ const Wrap: FC = () => {
       </Modal>
       <DataTable>
         <DataTableRow title="Unlock fee">
-          {Number(unlockFee).toFixed(2)}
+          {Number(useTxPrice(defaultUnlockGas).data).toFixed(2)}
         </DataTableRow>
-        <DataTableRow title="Gas fee">{Number(gasFee).toFixed(2)}</DataTableRow>
+        <DataTableRow title="Gas fee">
+          {Number(useTxPrice(defaultWrapGas).data).toFixed(2)}
+        </DataTableRow>
         <DataTableRow title="Exchange rate">
           1 {currentTokenSymbol} = {formatBalance(tokensPerStEth.data, 4)}{' '}
           {wstSymbol}

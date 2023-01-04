@@ -4,7 +4,7 @@ import { ExampleAbi__factory, IStETH__factory } from 'generated';
 import { ILido__factory } from 'generated';
 import { WstETH__factory } from 'generated';
 import { getLidoAddress } from 'config';
-import { getWstETHAddress } from 'config';
+import { getLidoWstethAddress } from 'config';
 
 const example = contractHooksFactory(ExampleAbi__factory, (chainId) =>
   getExampleAddress(chainId),
@@ -19,7 +19,7 @@ export const useLidoContractRpc = lido.useContractRPC;
 export const useLidoContractWeb3 = lido.useContractWeb3;
 
 const wstETH = contractHooksFactory(WstETH__factory, (chainId) =>
-  getWstETHAddress(chainId),
+  getLidoWstethAddress(chainId),
 );
 export const useWstETHContractRpc = wstETH.useContractRPC;
 export const useWstETHContractWeb3 = wstETH.useContractWeb3;

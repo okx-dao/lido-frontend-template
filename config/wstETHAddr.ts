@@ -15,6 +15,6 @@ export const WSTETH_ADDR_BY_NETWORK: {
   [CHAINS.Moonbase]: '0x0000000000000000000000000000000000000000',
 };
 
-export const getWstETHAddress = (chainId: CHAINS): string => {
+export const getLidoWstethAddress = (chainId: CHAINS): string => {
   return WSTETH_ADDR_BY_NETWORK[chainId];
 };
