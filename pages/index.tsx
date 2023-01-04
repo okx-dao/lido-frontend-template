@@ -61,7 +61,7 @@ const Home: FC<HomeProps> = ({ faqList }) => {
   const [canStake, setCanStake] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [openModal, setOpenModal] = useState(false);
-  const [gasLimit, setGasLimit] = useState('21000');
+  const [gasLimit, setGasLimit] = useState('100000');
   const [modalProps, setModalProps] = useState({
     modalTitle: '',
     modalSubTitle: '',

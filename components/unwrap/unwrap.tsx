@@ -13,16 +13,18 @@ import {
   Wsteth,
 } from '@lidofinance/lido-ui';
 import {
+  // useContractEstimateGasSWR,
   useContractSWR,
   useSDK,
   useSTETHBalance,
+  useTxPrice,
   useWSTETHBalance,
 } from '@lido-sdk/react';
 import { useWstETHContractRpc, useWstETHContractWeb3 } from 'hooks';
 import { BigNumber, utils } from 'ethers';
 import styled from 'styled-components';
 import { formatBalance } from 'utils';
-import { decimals, SCANNERS } from 'config';
+import { decimals, stSymbol, wstSymbol, SCANNERS } from 'config';
 // import getConfig from 'next/config';
 import SubmitOrConnect from 'components/submitOrConnect';
 import { parseUnits } from '@ethersproject/units';
@@ -35,18 +37,17 @@ const InputWrapper = styled.div`
 const Unwrap: FC = () => {
   const { chainId } = useSDK();
   const [enteredAmount, setEnteredAmount] = useState('');
-  const wstSymbol = 'wstETH';
   const [reward, setReward] = useState('0');
-  const stSymbol = 'stETH';
   const [isSwapping, setIsSwapping] = useState(false);
   const [canSwap, setCanSwap] = useState(false);
-  const gasFee = '0';
   const [inputError, setInputError] = useState('');
   const steth = useSTETHBalance();
   const wsteth = useWSTETHBalance();
   const wstETHContractWeb3 = useWstETHContractWeb3();
   const wstETHContractRpc = useWstETHContractRpc();
   const [openModal, setOpenModal] = useState(false);
+  const defaultUnwrapGas = '107624';
+
   const [modalProps, setModalProps] = useState({
     modalTitle: '',
     modalSubTitle: '',
@@ -73,8 +74,17 @@ const Unwrap: FC = () => {
     params: [stringToBalance(enteredAmount)],
   });
 
+  // const unwrapEstimatedGas = useContractEstimateGasSWR({
+  //   contract: wstETHContractWeb3? wstETHContractWeb3: undefined,
+  //   method: 'unwrap',
+  //   params: [
+  //     '100000000000000000',
+  //   ],
+  //   shouldFetch: true,
+  // });
+
   useEffect(() => {
-    if (+enteredAmount == 0) {
+    if (+enteredAmount > 0) {
       setReward(formatBalance(getStETHByWstETH.data, 4));
     } else {
       setReward('0');
@@ -85,7 +95,7 @@ const Unwrap: FC = () => {
     if (+enteredAmount == 0) {
       setEnteredAmount(formatBalance(wsteth.data, 18));
     }
-  }, [wsteth.data])
+  }, [wsteth.data]);
 
   const checkInput = (amount: string) => {
     let isValid = true;
@@ -129,12 +139,13 @@ const Unwrap: FC = () => {
     return isValid;
   };
 
-  useEffect(()=>{
-    if(checkInput(enteredAmount)){
-      setInputError("");
+  useEffect(() => {
+    if (checkInput(enteredAmount)) {
+      setInputError('');
       setCanSwap(true);
     }
-  }, [enteredAmount])
+    // console.log("unwrapEstimatedGas: ", unwrapEstimatedGas.data?.toString());
+  }, [enteredAmount]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const amount = e.target.value;
@@ -250,7 +261,7 @@ const Unwrap: FC = () => {
       </Modal>
       <DataTable>
         <DataTableRow title="Gas fee">
-          ${Number(gasFee).toFixed(2)}
+          ${Number(useTxPrice(defaultUnwrapGas).data).toFixed(2)}
         </DataTableRow>
         <DataTableRow title="Exchange rate">
           1 {wstSymbol} = {formatBalance(stETHPerToken.data, 4)} {stSymbol}
