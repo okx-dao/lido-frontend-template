@@ -7,10 +7,10 @@ import {
   useContractSWR,
   useEthereumBalance,
   useEthereumSWR,
-  useFeeAnalytics,
   useSDK,
   useSTETHContractRPC,
   useSTETHContractWeb3,
+  useTxPrice,
 } from '@lido-sdk/react';
 import {
   Block,
@@ -30,7 +30,7 @@ import Wallet from 'components/wallet';
 import Section from 'components/section';
 import Layout from 'components/layout';
 import Faq from 'components/faq';
-import { etherToString, formatBalance, stringToEther } from 'utils';
+import { formatBalance, stringToEther } from 'utils';
 import { FAQItem, getFaqList } from 'utils/faqList';
 import BigNumber from 'bignumber.js';
 import { useLidoOracleContractRPC } from '../hooks';
@@ -61,6 +61,7 @@ const Home: FC<HomeProps> = ({ faqList }) => {
   const [canStake, setCanStake] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [openModal, setOpenModal] = useState(false);
+  const [gasLimit, setGasLimit] = useState('21000');
   const [modalProps, setModalProps] = useState({
     modalTitle: '',
     modalSubTitle: '',
@@ -177,6 +178,9 @@ const Home: FC<HomeProps> = ({ faqList }) => {
     method: 'getFee',
   });
 
+  // protocolAPR = (postTotalPooledEther - preTotalPooledEther) * secondsInYear / (preTotalPooledEther * timeElapsed)
+  // lidoFeeAsFraction = lidoFee / basisPoint
+  // userAPR = protocolAPR * (1 - lidoFeeAsFraction)
   const lastReport = useContractSWR({
     contract: lidoOracleContractRpc,
     method: 'getLastCompletedReportDelta',
@@ -199,32 +203,34 @@ const Home: FC<HomeProps> = ({ faqList }) => {
     ?.mul(10000 - (fee.data ? fee.data : 0))
     .div(10000);
 
+  stEthContractWeb3?.estimateGas
+    .submit('0x0000000000000000000000000000000000000000', {
+      value: stringToEther(enteredAmount),
+    })
+    .then((gas) => {
+      setGasLimit(gas.toString());
+    })
+    // eslint-disable-next-line @typescript-eslint/no-empty-function
+    .catch(() => {});
+
   const gasPirce = useEthereumSWR({
     method: 'getGasPrice',
   });
-
-  console.log('gasPirce', gasPirce);
-
-  const feeAnalytics = useFeeAnalytics();
-  console.log('feeAnalytics', feeAnalytics);
-
-  const gasLimit = '94629';
-  const gasFee = feeAnalytics.baseFee
-    .mul('1000000000')
-    .add(gasPirce.data ? gasPirce.data : 0)
-    .mul(gasLimit);
+  const gasFee = gasPirce.data?.mul(gasLimit.toString());
 
   const setMaxInputValue = () => {
     if (account) {
-      const amount = eth.data?.sub(gasFee ? gasFee : 0);
+      const amount = eth.data
+        ?.sub('10000000000000000')
+        .sub(gasFee ? gasFee : 0);
       if (amount?.gt(0)) {
-        setEnteredAmount(formatBalance(amount));
+        setEnteredAmount(formatBalance(amount, 18));
         setCanStake(true);
-      } else {
-        alert('手续费不足');
       }
     }
   };
+
+  const txPrice = useTxPrice(gasLimit.toString());
 
   return (
     <Layout
@@ -287,7 +293,7 @@ const Home: FC<HomeProps> = ({ faqList }) => {
             title="Transaction cost"
             loading={tokenName.initialLoading}
           >
-            {}
+            {txPrice.data ? txPrice.data : 0} $
           </DataTableRow>
           <DataTableRow
             help="Please note: this fee applies to staking rewards/earning only, and is NOT taken from your staked amount. It is a fee on earnings only."
@@ -311,13 +317,13 @@ const Home: FC<HomeProps> = ({ faqList }) => {
               highlight
               loading={tokenName.initialLoading}
             >
-              {etherToString(userAPR)} %
+              {formatBalance(userAPR, 1)} %
             </DataTableRow>
             <DataTableRow
               title="Total staked with Lido"
               loading={tokenName.initialLoading}
             >
-              {etherToString(totalPooledEther.data)} ETH
+              {formatBalance(totalPooledEther.data, 3)} ETH
             </DataTableRow>
             <DataTableRow title="Stakers" loading={tokenName.initialLoading}>
               {(
@@ -328,7 +334,7 @@ const Home: FC<HomeProps> = ({ faqList }) => {
               title="stETH market cap"
               loading={tokenName.initialLoading}
             >
-              {}
+              ${}
             </DataTableRow>
           </DataTable>
         </Block>
