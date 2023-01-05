@@ -13,6 +13,7 @@ import {
   Wsteth,
 } from '@lidofinance/lido-ui';
 import {
+  useContractEstimateGasSWR,
   // useContractEstimateGasSWR,
   useContractSWR,
   useSDK,
@@ -47,6 +48,7 @@ const Unwrap: FC = () => {
   const wstETHContractRpc = useWstETHContractRpc();
   const [openModal, setOpenModal] = useState(false);
   const defaultUnwrapGas = '107624';
+  const [unwrapGas, setUnwrapGas] = useState('125794');
 
   const [modalProps, setModalProps] = useState({
     modalTitle: '',
@@ -74,14 +76,20 @@ const Unwrap: FC = () => {
     params: [stringToBalance(enteredAmount)],
   });
 
-  // const unwrapEstimatedGas = useContractEstimateGasSWR({
-  //   contract: wstETHContractWeb3? wstETHContractWeb3: undefined,
-  //   method: 'unwrap',
-  //   params: [
-  //     '100000000000000000',
-  //   ],
-  //   shouldFetch: true,
-  // });
+  const unwrapEstimatedGas = useContractEstimateGasSWR({
+    contract: wstETHContractWeb3 ? wstETHContractWeb3 : undefined,
+    method: 'unwrap',
+    params: [stringToBalance(enteredAmount)],
+    shouldFetch: true,
+  });
+
+  useEffect(() => {
+    if (unwrapEstimatedGas.data && canSwap) {
+      setUnwrapGas(unwrapEstimatedGas.data.toString());
+    } else {
+      setUnwrapGas(defaultUnwrapGas);
+    }
+  }, [unwrapEstimatedGas.data]);
 
   useEffect(() => {
     if (+enteredAmount > 0) {
@@ -261,7 +269,7 @@ const Unwrap: FC = () => {
       </Modal>
       <DataTable>
         <DataTableRow title="Gas fee">
-          ${Number(useTxPrice(defaultUnwrapGas).data).toFixed(2)}
+          ${Number(useTxPrice(unwrapGas).data).toFixed(2)}
         </DataTableRow>
         <DataTableRow title="Exchange rate">
           1 {wstSymbol} = {formatBalance(stETHPerToken.data, 4)} {stSymbol}

@@ -18,6 +18,7 @@ import {
   // useFeeAnalytics,
   // useContractEstimateGasSWR,
   useTxPrice,
+  useContractEstimateGasSWR,
 } from '@lido-sdk/react';
 import {
   useStETHContractRpc,
@@ -68,9 +69,10 @@ const Wrap: FC = () => {
   const [currentToken, setCurrentToken] = useState('steth'); //steth/eth
   const [unlockIcon, setUnlockIcon] = useState('');
   const defaultWrapGas = '113888';
-  // const [wrapGas, setWrapGas] = useState(defaultWrapGas);
+  const defaultSendGas = '125794';
+  const [wrapGas, setWrapGas] = useState(defaultWrapGas);
   const defaultUnlockGas = String((47829 + 77513) / 2); // 47829, 77513
-  // const [unlockGas, setUnlockGas] = useState(defaultUnlockGas);
+  const [unlockGas, setUnlockGas] = useState(defaultUnlockGas);
 
   useEffect(() => {
     if (steth.data) {
@@ -123,13 +125,14 @@ const Wrap: FC = () => {
             setCanUnlock(false);
             setUnlockIcon('');
             setCanSwap(true);
+            sendEstimatedGas(parseUnits(amount));
             return;
           }
         }
       }
       setDisabled();
     } catch (e) {
-      // console.log("checkAllowance, error occured!");
+      // console.log("checkAllowance, error occured!", e);
       setCanUnlock(false);
       setCanSwap(false);
       setReward('0');
@@ -174,42 +177,53 @@ const Wrap: FC = () => {
     params: [account, getLidoWstethAddress(chainId)],
   });
 
-  // const wrapEstimatedGas = useContractEstimateGasSWR({
-  //   contract: wstETHContractWeb3? wstETHContractWeb3: undefined,
-  //   method: 'wrap',
-  //   params: [
-  //     '100000000000000000',
-  //   ],
-  //   shouldFetch: true,
-  // });
+  const sendEstimatedGas = (amount: BigNumber) => {
+    providerWeb3
+      ?.estimateGas({
+        from: account,
+        to: getLidoWstethAddress(chainId),
+        value: amount.toHexString(),
+      })
+      .then((gas) => {
+        console.log('send gas: ', gas.toString());
+        if (canSwap) {
+          setWrapGas(gas.toString());
+        }
+      })
+      .catch(() => {
+        setWrapGas(defaultSendGas);
+      });
+  };
 
-  // useEffect(() => {
-  //   if(wrapEstimatedGas.data && wrapEstimatedGas.data.gt("21264")){
-  //     setWrapGas(wrapEstimatedGas.data.toString())
-  //   }
-  //   else{
-  //     setWrapGas(defaultWrapGas);
-  //   }
-  // }, [wrapEstimatedGas.data])
+  const wrapEstimatedGas = useContractEstimateGasSWR({
+    contract: wstETHContractWeb3 ? wstETHContractWeb3 : undefined,
+    method: 'wrap',
+    params: [stringToBalance(enteredAmount)],
+    shouldFetch: true,
+  });
 
-  // const unlockEstimatedGas = useContractEstimateGasSWR({
-  //   contract: stETHContractWeb3? stETHContractWeb3: undefined,
-  //   method: 'approve',
-  //   params: [
-  //     getLidoWstethAddress(chainId),
-  //     '100000000000000000',
-  //   ],
-  //   shouldFetch: true,
-  // });
+  useEffect(() => {
+    if (wrapEstimatedGas.data && canSwap) {
+      setWrapGas(wrapEstimatedGas.data.toString());
+    } else {
+      setWrapGas(defaultWrapGas);
+    }
+  }, [wrapEstimatedGas.data]);
 
-  // useEffect(() => {
-  //   if(unlockEstimatedGas.data && unlockEstimatedGas.data.gt("21392")){
-  //     setUnlockGas(unlockEstimatedGas.data.toString())
-  //   }
-  //   else{
-  //     setUnlockGas(defaultUnlockGas);
-  //   }
-  // }, [unlockEstimatedGas.data])
+  const unlockEstimatedGas = useContractEstimateGasSWR({
+    contract: stETHContractWeb3 ? stETHContractWeb3 : undefined,
+    method: 'approve',
+    params: [getLidoWstethAddress(chainId), stringToBalance(enteredAmount)],
+    shouldFetch: true,
+  });
+
+  useEffect(() => {
+    if (unlockEstimatedGas.data && canUnlock) {
+      setUnlockGas(unlockEstimatedGas.data.toString());
+    } else {
+      setUnlockGas(defaultUnlockGas);
+    }
+  }, [unlockEstimatedGas.data]);
 
   // const history = useFeeHistory({ blocks: 1024 });
 
@@ -466,10 +480,10 @@ const Wrap: FC = () => {
       </Modal>
       <DataTable>
         <DataTableRow title="Unlock fee">
-          {Number(useTxPrice(defaultUnlockGas).data).toFixed(2)}
+          ${Number(useTxPrice(unlockGas).data).toFixed(2)}
         </DataTableRow>
         <DataTableRow title="Gas fee">
-          {Number(useTxPrice(defaultWrapGas).data).toFixed(2)}
+          ${Number(useTxPrice(wrapGas).data).toFixed(2)}
         </DataTableRow>
         <DataTableRow title="Exchange rate">
           1 {currentTokenSymbol} = {formatBalance(tokensPerStEth.data, 4)}{' '}
